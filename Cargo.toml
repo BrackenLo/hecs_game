@@ -1,0 +1,12 @@
+[package]
+name = "hecs_game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+env_logger = "0.11.5"
+glam = "0.29.2"
+hecs = "0.10.5"
+hecs_engine.path = "../hecs_engine"
+log = "0.4.22"
+rand = "0.8.5"
