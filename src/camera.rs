@@ -17,9 +17,9 @@ pub fn resize_camers(world: &mut World, size: Size<u32>) {
         .for_each(|(_, camera)| camera.aspect = size.width as f32 / size.height as f32);
 }
 
-const CAMERA_MOVE_SPEED: f32 = 100.;
+const _CAMERA_MOVE_SPEED: f32 = 100.;
 
-pub fn debug_move_camera(state: &mut State) {
+pub fn _debug_move_camera(state: &mut State) {
     let left = state.keys().pressed(KeyCode::KeyA);
     let right = state.keys().pressed(KeyCode::KeyD);
 
@@ -68,7 +68,7 @@ pub fn debug_move_camera(state: &mut State) {
         };
         let up = glam::Vec3::Y * dir.y;
 
-        transform.translation += (forward + right + up) * CAMERA_MOVE_SPEED * delta;
+        transform.translation += (forward + right + up) * _CAMERA_MOVE_SPEED * delta;
     }
 
     let yaw_rotation = glam::Quat::from_rotation_y(yaw);

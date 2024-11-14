@@ -1,13 +1,13 @@
 //====================================================================
 
-use hecs::Entity;
+use hecs::{Entity, EntityBuilder};
 use hecs_engine::{
     common::{GlobalTransform, Transform},
     engine::{spatial::LocalTransform, tools::KeyCode, State},
     prelude::{PerspectiveCamera, Sprite},
 };
 
-use crate::physics::{Gravity, Velocity};
+use crate::physics::{CharacterCollisionBundle, CharacterController, CharacterMovementBundle};
 
 //====================================================================
 
@@ -24,18 +24,20 @@ impl PlayerState {
     pub fn new(state: &mut State) -> Self {
         let texture = state.renderer().clone_default_texture();
 
-        let player = state.world_mut().spawn((
-            Player,
-            Velocity::default(),
-            Gravity::default(),
-            Transform::from_translation((10., 0., -50.)),
-            GlobalTransform::default(),
-            Sprite {
-                texture,
-                size: glam::vec2(20., 20.),
-                color: [0., 1., 0., 1.],
-            },
-        ));
+        let player = state.world_mut().spawn(
+            EntityBuilder::new()
+                .add(Player)
+                .add(Transform::from_translation((10., 0., -50.)))
+                .add(GlobalTransform::default())
+                .add(Sprite {
+                    texture,
+                    half_size: glam::vec2(20., 35.),
+                    color: [0., 1., 0., 1.],
+                })
+                .add_bundle(CharacterMovementBundle::default())
+                .add_bundle(CharacterCollisionBundle::default())
+                .build(),
+        );
 
         let camera = state.renderer().spawn_camera(PerspectiveCamera::default());
 
@@ -46,7 +48,7 @@ impl PlayerState {
                 (
                     LocalTransform {
                         parent: player,
-                        transform: Transform::from_translation((0., 20., -50.)),
+                        transform: Transform::from_translation((0., 35., -50.)),
                     },
                     GlobalTransform::default(),
                 ),
@@ -55,8 +57,6 @@ impl PlayerState {
 
         Self { player, camera }
     }
-
-    const MOVE_SPEED: f32 = 100.;
 
     pub fn process_player(&self, state: &mut State) {
         let delta = state.time().delta_seconds();
@@ -99,34 +99,46 @@ impl PlayerState {
 
         let move_dir = glam::Vec3::new(x_dir, 0., z_dir).normalize_or_zero();
 
-        // let jump = state.keys().pressed(KeyCode::Space);
+        let jump = state.keys().pressed(KeyCode::Space);
         // let sprint = state.keys().pressed(KeyCode::ShiftLeft);
 
         //--------------------------------------------------
 
+        state
+            .world()
+            .get::<&CharacterController>(self.player)
+            .unwrap();
+
         let player = state.world().entity(self.player).unwrap();
 
-        let mut velocity = player.get::<&mut Velocity>().unwrap();
+        let mut controller = player.get::<&mut CharacterController>().unwrap();
         let mut transform = player.get::<&mut Transform>().unwrap();
-        // let gravity = player.get::<&Gravity>().unwrap();
 
         if move_dir != glam::Vec3::ZERO {
             let forward = {
                 let forward = transform.rotation * glam::Vec3::Z;
-                glam::vec3(forward.x, 0., forward.z).normalize()
+                glam::vec2(forward.x, forward.z).normalize()
             } * move_dir.z;
 
             let right = {
                 let right = transform.rotation * glam::Vec3::X;
-                glam::vec3(right.x, 0., right.z).normalize()
+                glam::vec2(right.x, right.z).normalize()
             } * move_dir.x;
 
-            velocity.0 = (forward + right) * Self::MOVE_SPEED * delta;
-        } else {
-            velocity.0 = glam::Vec3::ZERO;
+            let direction = forward + right;
+
+            controller
+                .movement_action_queue
+                .push(crate::physics::MovementAction::Move(direction.into()));
         }
 
         transform.rotation = yaw_rotation * transform.rotation;
+
+        if jump {
+            controller
+                .movement_action_queue
+                .push(crate::physics::MovementAction::Jump);
+        }
     }
 }
 
