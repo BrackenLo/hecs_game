@@ -1,8 +1,8 @@
 //====================================================================
 
-use hecs::World;
+use hecs::{Entity, World};
 use hecs_engine::{
-    common::{Size, Transform},
+    common::{GlobalTransform, Size, Transform},
     engine::{tools::KeyCode, State},
     prelude::PerspectiveCamera,
 };
@@ -16,6 +16,33 @@ pub fn resize_camers(world: &mut World, size: Size<u32>) {
         .into_iter()
         .for_each(|(_, camera)| camera.aspect = size.width as f32 / size.height as f32);
 }
+
+pub struct FollowEntity {
+    pub entity: Entity,
+    pub damping: f32,
+}
+
+pub fn process_follow_entity(state: &mut State) {
+    state
+        .world()
+        .query::<(&FollowEntity, &mut Transform)>()
+        .into_iter()
+        .for_each(|(_, (follow, transform))| {
+            let target_global_transform = state
+                .world()
+                .get::<&GlobalTransform>(follow.entity)
+                .unwrap();
+
+            let (scale, rotation, translation) =
+                target_global_transform.0.to_scale_rotation_translation();
+
+            transform.scale = transform.scale.lerp(scale, follow.damping);
+            transform.rotation = transform.rotation.lerp(rotation, follow.damping);
+            transform.translation = transform.translation.lerp(translation, follow.damping);
+        });
+}
+
+//====================================================================
 
 const _CAMERA_MOVE_SPEED: f32 = 100.;
 

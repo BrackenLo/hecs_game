@@ -99,30 +99,6 @@ pub struct TriggerCollisionType;
 
 //====================================================================
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// pub enum CollisionDirection {
-//     Front,
-//     Back,
-//     Top,
-//     Bottom,
-//     Left,
-//     Right,
-// }
-
-// impl CollisionDirection {
-//     #[inline]
-//     pub fn flip(self) -> Self {
-//         match self {
-//             CollisionDirection::Front => CollisionDirection::Back,
-//             CollisionDirection::Back => CollisionDirection::Front,
-//             CollisionDirection::Top => CollisionDirection::Bottom,
-//             CollisionDirection::Bottom => CollisionDirection::Top,
-//             CollisionDirection::Left => CollisionDirection::Right,
-//             CollisionDirection::Right => CollisionDirection::Left,
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollisionDirection {
     Horizontal,

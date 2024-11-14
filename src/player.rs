@@ -4,7 +4,7 @@ use hecs::{Entity, EntityBuilder};
 use hecs_engine::{
     common::{GlobalTransform, Transform},
     engine::{spatial::LocalTransform, tools::KeyCode, State},
-    prelude::{PerspectiveCamera, Sprite},
+    prelude::Sprite,
 };
 
 use crate::physics::{CharacterCollisionBundle, CharacterController, CharacterMovementBundle};
@@ -17,7 +17,11 @@ pub struct Player;
 
 pub struct PlayerState {
     player: Entity,
-    camera: Entity,
+
+    camera_anchor: Entity,
+    camera_angle: f32,
+    camera_distance: f32,
+    camera_zoom_speed: f32,
 }
 
 impl PlayerState {
@@ -39,26 +43,29 @@ impl PlayerState {
                 .build(),
         );
 
-        let camera = state.renderer().spawn_camera(PerspectiveCamera::default());
+        let camera_pos = glam::vec2(35., -50.);
+        let camera_angle = camera_pos.to_angle();
+        let camera_distance = camera_pos.length();
+        let camera_zoom_speed = 4.;
 
-        state
-            .world_mut()
-            .insert(
-                camera,
-                (
-                    LocalTransform {
-                        parent: player,
-                        transform: Transform::from_translation((0., 35., -50.)),
-                    },
-                    GlobalTransform::default(),
-                ),
-            )
-            .unwrap();
+        let camera_anchor = state.world_mut().spawn((
+            LocalTransform {
+                parent: player,
+                transform: Transform::from_translation((0., camera_pos.x, camera_pos.y)),
+            },
+            GlobalTransform::default(),
+        ));
 
-        Self { player, camera }
+        Self {
+            player,
+            camera_anchor,
+            camera_angle,
+            camera_distance,
+            camera_zoom_speed,
+        }
     }
 
-    pub fn process_player(&self, state: &mut State) {
+    pub fn process_player(&mut self, state: &mut State) {
         let delta = state.time().delta_seconds();
 
         //--------------------------------------------------
@@ -71,7 +78,7 @@ impl PlayerState {
 
         let mut camera_local_transform = state
             .world()
-            .get::<&mut LocalTransform>(self.camera)
+            .get::<&mut LocalTransform>(self.camera_anchor)
             .unwrap();
 
         camera_local_transform.transform.rotation *= pitch_rotation;
@@ -85,6 +92,16 @@ impl PlayerState {
         let camera_rotation_x = camera_x_rotation.clamp(-45_f32.to_radians(), 45_f32.to_radians());
 
         camera_local_transform.transform.rotation = glam::Quat::from_rotation_x(camera_rotation_x);
+
+        let scroll = state.mouse_input().scroll().y;
+        if scroll != 0. {
+            self.camera_distance -= scroll * self.camera_zoom_speed;
+            self.camera_distance = self.camera_distance.clamp(20., 200.);
+
+            let new_camera_pos = glam::Vec2::from_angle(self.camera_angle) * self.camera_distance;
+            camera_local_transform.transform.translation.y = new_camera_pos.x;
+            camera_local_transform.transform.translation.z = new_camera_pos.y;
+        }
 
         //--------------------------------------------------
 
@@ -139,6 +156,16 @@ impl PlayerState {
                 .movement_action_queue
                 .push(crate::physics::MovementAction::Jump);
         }
+    }
+
+    #[inline]
+    pub fn _player(&self) -> Entity {
+        self.player
+    }
+
+    #[inline]
+    pub fn camera_anchor(&self) -> Entity {
+        self.camera_anchor
     }
 }
 
