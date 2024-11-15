@@ -7,16 +7,24 @@ use hecs_engine::{
     prelude::Sprite,
 };
 
-use crate::physics::{CharacterCollisionBundle, CharacterController, CharacterMovementBundle};
+use crate::physics::{
+    Accel, CharacterCollisionBundle, CharacterController, CharacterMovementBundle,
+};
 
 //====================================================================
 
 pub struct Player;
 
+pub struct PlayerSpeed {
+    walk: f32,
+    sprint: f32,
+}
+
 //====================================================================
 
 pub struct PlayerState {
     player: Entity,
+    pub movement_disabled: bool,
 
     camera_anchor: Entity,
     camera_angle: f32,
@@ -31,6 +39,10 @@ impl PlayerState {
         let player = state.world_mut().spawn(
             EntityBuilder::new()
                 .add(Player)
+                .add(PlayerSpeed {
+                    walk: 1300.,
+                    sprint: 2000.,
+                })
                 .add(Transform::from_translation((10., 0., -50.)))
                 .add(GlobalTransform::default())
                 .add(Sprite {
@@ -58,6 +70,8 @@ impl PlayerState {
 
         Self {
             player,
+            movement_disabled: false,
+
             camera_anchor,
             camera_angle,
             camera_distance,
@@ -66,6 +80,10 @@ impl PlayerState {
     }
 
     pub fn process_player(&mut self, state: &mut State) {
+        if self.movement_disabled {
+            return;
+        }
+
         let delta = state.time().delta_seconds();
 
         //--------------------------------------------------
@@ -117,7 +135,7 @@ impl PlayerState {
         let move_dir = glam::Vec3::new(x_dir, 0., z_dir).normalize_or_zero();
 
         let jump = state.keys().pressed(KeyCode::Space);
-        // let sprint = state.keys().pressed(KeyCode::ShiftLeft);
+        let sprint = state.keys().pressed(KeyCode::ShiftLeft);
 
         //--------------------------------------------------
 
@@ -156,6 +174,14 @@ impl PlayerState {
                 .movement_action_queue
                 .push(crate::physics::MovementAction::Jump);
         }
+
+        let mut accel = player.get::<&mut Accel>().unwrap();
+        let speed = player.get::<&PlayerSpeed>().unwrap();
+
+        accel.0 = match sprint {
+            true => speed.sprint,
+            false => speed.walk,
+        };
     }
 
     #[inline]

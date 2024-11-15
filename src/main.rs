@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use hecs::{Entity, EntityBuilder};
 use hecs_engine::{
+    engine::tools::KeyCode,
     pipelines::{texture_renderer::TextureRenderer, ui3d_renderer::Ui3dRenderer},
     prelude::*,
 };
@@ -13,6 +14,7 @@ use player::PlayerState;
 pub(crate) mod camera;
 pub(crate) mod physics;
 pub(crate) mod player;
+pub(crate) mod tools;
 
 //====================================================================
 
@@ -39,7 +41,10 @@ pub struct Game {
     player_state: PlayerState,
     physics: PhysicsHandler,
 
-    _camera: Entity,
+    camera: Entity,
+
+    cursor_locked: bool,
+    camera_debug: bool,
 }
 
 impl App for Game {
@@ -49,8 +54,9 @@ impl App for Game {
             .add_renderer::<TextureRenderer>(5)
             .add_renderer::<Ui3dRenderer>(10);
 
-        state.window().confine_cursor(true);
-        state.window().hide_cursor(true);
+        let cursor_locked = true;
+        state.window().confine_cursor(cursor_locked);
+        state.window().hide_cursor(cursor_locked);
 
         let default_texture = state.renderer().clone_default_texture();
 
@@ -72,7 +78,7 @@ impl App for Game {
             .world_mut()
             .insert_one(
                 camera,
-                camera::FollowEntity {
+                tools::FollowEntity {
                     entity: player_state.camera_anchor(),
                     damping: 0.2,
                 },
@@ -84,7 +90,9 @@ impl App for Game {
         Self {
             player_state,
             physics,
-            _camera: camera,
+            camera,
+            cursor_locked,
+            camera_debug: false,
         }
     }
 
@@ -93,12 +101,46 @@ impl App for Game {
     }
 
     fn update(&mut self, state: &mut State) {
+        if state.keys().just_pressed(KeyCode::F1) {
+            self.cursor_locked = !self.cursor_locked;
+            state.window().confine_cursor(self.cursor_locked);
+            state.window().hide_cursor(self.cursor_locked);
+        }
+
+        if state.keys().just_pressed(KeyCode::F2) {
+            self.camera_debug = !self.camera_debug;
+            self.player_state.movement_disabled = self.camera_debug;
+
+            match self.camera_debug {
+                true => {
+                    state
+                        .world_mut()
+                        .remove_one::<tools::FollowEntity>(self.camera)
+                        .unwrap();
+                }
+                false => state
+                    .world_mut()
+                    .insert_one(
+                        self.camera,
+                        tools::FollowEntity {
+                            entity: self.player_state.camera_anchor(),
+                            damping: 0.2,
+                        },
+                    )
+                    .unwrap(),
+            };
+        }
+
+        if self.camera_debug {
+            camera::debug_move_camera(state);
+        }
+
         // camera::debug_move_camera(state);
         self.player_state.process_player(state);
 
         self.physics.tick_physics(state);
 
-        camera::process_follow_entity(state);
+        tools::process_follow_entity(state);
     }
 }
 

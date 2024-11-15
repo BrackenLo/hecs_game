@@ -1,8 +1,8 @@
 //====================================================================
 
-use hecs::{Entity, World};
+use hecs::World;
 use hecs_engine::{
-    common::{GlobalTransform, Size, Transform},
+    common::{Size, Transform},
     engine::{tools::KeyCode, State},
     prelude::PerspectiveCamera,
 };
@@ -17,36 +17,11 @@ pub fn resize_camers(world: &mut World, size: Size<u32>) {
         .for_each(|(_, camera)| camera.aspect = size.width as f32 / size.height as f32);
 }
 
-pub struct FollowEntity {
-    pub entity: Entity,
-    pub damping: f32,
-}
-
-pub fn process_follow_entity(state: &mut State) {
-    state
-        .world()
-        .query::<(&FollowEntity, &mut Transform)>()
-        .into_iter()
-        .for_each(|(_, (follow, transform))| {
-            let target_global_transform = state
-                .world()
-                .get::<&GlobalTransform>(follow.entity)
-                .unwrap();
-
-            let (scale, rotation, translation) =
-                target_global_transform.0.to_scale_rotation_translation();
-
-            transform.scale = transform.scale.lerp(scale, follow.damping);
-            transform.rotation = transform.rotation.lerp(rotation, follow.damping);
-            transform.translation = transform.translation.lerp(translation, follow.damping);
-        });
-}
-
 //====================================================================
 
-const _CAMERA_MOVE_SPEED: f32 = 100.;
+const CAMERA_MOVE_SPEED: f32 = 100.;
 
-pub fn _debug_move_camera(state: &mut State) {
+pub fn debug_move_camera(state: &mut State) {
     let left = state.keys().pressed(KeyCode::KeyA);
     let right = state.keys().pressed(KeyCode::KeyD);
 
@@ -88,18 +63,18 @@ pub fn _debug_move_camera(state: &mut State) {
         let forward = {
             let forward = transform.rotation * glam::Vec3::Z;
             glam::vec3(forward.x, 0., forward.z).normalize()
-        };
+        } * dir.z;
         let right = {
             let right = transform.rotation * glam::Vec3::X;
             glam::vec3(right.x, 0., right.z).normalize()
-        };
+        } * dir.x;
         let up = glam::Vec3::Y * dir.y;
 
-        transform.translation += (forward + right + up) * _CAMERA_MOVE_SPEED * delta;
+        transform.translation += (forward + right + up) * CAMERA_MOVE_SPEED * delta;
     }
 
-    let yaw_rotation = glam::Quat::from_rotation_y(yaw);
-    let pitch_rotation = glam::Quat::from_rotation_x(pitch);
+    let yaw_rotation = glam::Quat::from_rotation_y(yaw * delta);
+    let pitch_rotation = glam::Quat::from_rotation_x(pitch * delta);
 
     transform.rotation = yaw_rotation * transform.rotation * pitch_rotation;
 }
