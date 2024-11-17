@@ -89,6 +89,17 @@ impl Default for CharacterCollisionBundle {
     }
 }
 
+impl CharacterCollisionBundle {
+    #[inline]
+    pub fn from_shape(shape: CollisionShape) -> Self {
+        Self {
+            hits: CollisionHits::default(),
+            dynamic: DynamicCollisionType,
+            shape,
+        }
+    }
+}
+
 //====================================================================
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,9 +112,62 @@ pub struct TriggerCollisionType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollisionDirection {
-    Horizontal,
-    VerticalTop,
-    VerticalBottom,
+    PosX,
+    NegX,
+    PosY,
+    NegY,
+    PosZ,
+    NegZ,
+}
+
+impl CollisionDirection {
+    #[inline]
+    fn from_axis(axis: Axis, direction: &glam::Vec3) -> Self {
+        match axis {
+            Axis::X => match direction.x >= 0. {
+                true => Self::PosX,
+                false => Self::NegX,
+            },
+            Axis::Y => match direction.y >= 0. {
+                true => Self::PosY,
+                false => Self::NegY,
+            },
+            Axis::Z => match direction.z >= 0. {
+                true => Self::PosZ,
+                false => Self::NegZ,
+            },
+        }
+    }
+
+    #[inline]
+    fn flip(self) -> Self {
+        match self {
+            CollisionDirection::PosX => Self::NegX,
+            CollisionDirection::NegX => Self::PosX,
+            CollisionDirection::PosY => Self::NegY,
+            CollisionDirection::NegY => Self::PosY,
+            CollisionDirection::PosZ => Self::NegZ,
+            CollisionDirection::NegZ => Self::PosZ,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Axis {
+    X,
+    Y,
+    Z,
+}
+
+impl Axis {
+    #[inline]
+    pub fn get_scale(&self) -> glam::Vec3 {
+        match self {
+            Axis::X => glam::Vec3::X,
+            Axis::Y => glam::Vec3::Y,
+            Axis::Z => glam::Vec3::Z,
+        }
+    }
 }
 
 //====================================================================
@@ -215,6 +279,7 @@ fn apply_gravity(state: &mut State) {
     state
         .world_mut()
         .query_mut::<(&Gravity, &mut Velocity)>()
+        .without::<&Grounded>()
         .into_iter()
         .for_each(|(_, (gravity, velocity))| velocity.0 += gravity.0 * delta_time);
 }
@@ -234,109 +299,129 @@ fn apply_velocity_collisions(state: &mut State) {
         .without::<(&StaticCollisionType, &TriggerCollisionType)>()
         .into_iter()
         .for_each(|(dynamic_entity, (transform, velocity, shape, mut hits))| {
-            'horizontal: {
-                let horizontal_movement = glam::vec3(velocity.0.x, 0., velocity.0.z) * delta_time;
-
-                if horizontal_movement == glam::Vec3::ZERO {
-                    break 'horizontal;
-                }
-
-                transform.translation += horizontal_movement;
-
-                let prepped = PreppedCollisionShape::from_collision_shape(
-                    shape,
-                    transform.translation,
-                    transform.scale,
-                );
-
-                let collisions = check_static_against(
-                    state.world(),
-                    dynamic_entity,
-                    &prepped,
-                    CollisionDirection::Horizontal,
-                );
-                if !collisions.is_empty() {
-                    transform.translation -= horizontal_movement;
-                    velocity.0.x *= 0.4;
-                    velocity.0.z *= 0.4;
-
-                    if let Some(hits) = &mut hits {
-                        collisions.into_iter().for_each(|entity| {
-                            hits.hits.push((entity, CollisionDirection::Horizontal))
-                        });
-                    }
-                }
+            if velocity.0 == glam::Vec3::ZERO {
+                return;
             }
 
-            'vertical: {
-                let vertical_movement = velocity.0.y * delta_time;
+            let movement = velocity.0 * delta_time;
 
-                if vertical_movement == 0. {
-                    break 'vertical;
-                }
+            transform.translation += movement;
+            let prepped = PreppedCollisionShape::from_collision_shape(
+                shape,
+                transform.translation,
+                transform.scale,
+            );
 
-                transform.translation.y += vertical_movement;
-
-                let prepped = PreppedCollisionShape::from_collision_shape(
-                    shape,
-                    transform.translation,
-                    transform.scale,
-                );
-
-                let (static_direction, dynamic_direction) = match vertical_movement >= 0. {
-                    true => (
-                        CollisionDirection::VerticalBottom,
-                        CollisionDirection::VerticalTop,
-                    ),
-                    false => (
-                        CollisionDirection::VerticalTop,
-                        CollisionDirection::VerticalBottom,
-                    ),
-                };
-
-                let collisions =
-                    check_static_against(state.world(), dynamic_entity, &prepped, static_direction);
-                if !collisions.is_empty() {
-                    transform.translation.y -= vertical_movement;
-                    velocity.0.y *= 0.4;
-
-                    if let Some(hits) = &mut hits {
-                        collisions
-                            .into_iter()
-                            .for_each(|entity| hits.hits.push((entity, dynamic_direction)));
+            let static_hits = state
+                .world()
+                .query::<&PreppedCollisionShape>()
+                .with::<&StaticCollisionType>()
+                .without::<(&DynamicCollisionType, &TriggerCollisionType)>()
+                .into_iter()
+                .filter_map(|(entity, static_collision)| {
+                    match prepped.check_collision(static_collision) {
+                        true => Some(entity),
+                        false => None,
                     }
-                }
+                })
+                .collect::<Vec<_>>();
 
-                if let Some(hits) = &hits {
-                    if !hits.hits.is_empty() {}
-                }
+            if static_hits.is_empty() {
+                return;
             }
+
+            transform.translation -= movement;
+
+            do_axis_collision(
+                state.world(),
+                delta_time,
+                dynamic_entity,
+                transform,
+                velocity,
+                shape,
+                &mut hits,
+                Axis::X,
+                &static_hits,
+            );
+
+            do_axis_collision(
+                state.world(),
+                delta_time,
+                dynamic_entity,
+                transform,
+                velocity,
+                shape,
+                &mut hits,
+                Axis::Z,
+                &static_hits,
+            );
+
+            do_axis_collision(
+                state.world(),
+                delta_time,
+                dynamic_entity,
+                transform,
+                velocity,
+                shape,
+                &mut hits,
+                Axis::Y,
+                &static_hits,
+            );
         });
 }
 
-fn check_static_against(
+fn do_axis_collision(
     world: &World,
-    other: Entity,
-    prepped: &PreppedCollisionShape,
-    direction: CollisionDirection,
-) -> Vec<Entity> {
-    world
-        .query::<(&PreppedCollisionShape, Option<&mut CollisionHits>)>()
-        .with::<&StaticCollisionType>()
-        .without::<(&DynamicCollisionType, &TriggerCollisionType)>()
+    delta_time: f32,
+    dynamic_entity: Entity,
+    transform: &mut Transform,
+    velocity: &mut Velocity,
+    shape: &CollisionShape,
+    mut dynamic_hits: &mut Option<&mut CollisionHits>,
+    axis: Axis,
+
+    check_against: &Vec<Entity>,
+) {
+    let movement = velocity.0 * axis.get_scale() * delta_time;
+    let direction = CollisionDirection::from_axis(axis, &movement);
+
+    if movement == glam::Vec3::ZERO {
+        return;
+    }
+
+    transform.translation += movement;
+
+    let prepped =
+        PreppedCollisionShape::from_collision_shape(shape, transform.translation, transform.scale);
+
+    let static_entities_hit = check_against
         .into_iter()
-        .filter_map(|(entity, (static_collision, mut hits))| {
-            match prepped.check_collision(static_collision) {
+        .filter_map(|static_entity_id| {
+            let static_entity = world.entity(*static_entity_id).unwrap();
+            let static_collision = static_entity.get::<&PreppedCollisionShape>().unwrap();
+
+            match prepped.check_collision(&static_collision) {
                 true => {
-                    if let Some(hits) = &mut hits {
-                        hits.hits.push((other, direction));
+                    if let Some(mut hits) = static_entity.get::<&mut CollisionHits>() {
+                        hits.hits.push((dynamic_entity, direction));
                     }
-                    Some(entity)
+                    Some(*static_entity_id)
                 }
                 false => None,
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    if !static_entities_hit.is_empty() {
+        transform.translation -= movement;
+        let direction = direction.flip();
+
+        if let Some(hits) = &mut dynamic_hits {
+            static_entities_hit.into_iter().for_each(|hit| {
+                hits.hits.push((hit, direction));
+            });
+        }
+    }
 }
 
 fn update_grounded(state: &mut State) {
@@ -349,7 +434,7 @@ fn update_grounded(state: &mut State) {
             match hits
                 .hits
                 .iter()
-                .any(|(_, collision)| *collision == CollisionDirection::VerticalBottom)
+                .any(|(_, collision)| *collision == CollisionDirection::PosY)
             {
                 true => None,
                 false => Some(entity),
@@ -367,7 +452,7 @@ fn update_grounded(state: &mut State) {
             match hits
                 .hits
                 .iter()
-                .any(|(_, collision)| *collision == CollisionDirection::VerticalBottom)
+                .any(|(_, collision)| *collision == CollisionDirection::PosY)
             {
                 true => Some(entity),
                 false => None,

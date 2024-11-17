@@ -5,8 +5,13 @@ use std::sync::Arc;
 use hecs::{Entity, EntityBuilder};
 use hecs_engine::{
     engine::tools::KeyCode,
-    pipelines::{texture_renderer::TextureRenderer, ui3d_renderer::Ui3dRenderer},
+    pipelines::{
+        model_renderer::{Mesh, Model, ModelRenderer},
+        texture_renderer::TextureRenderer,
+        ui3d_renderer::Ui3dRenderer,
+    },
     prelude::*,
+    renderer::shared::{CUBE_INDICES, CUBE_VERTICES},
 };
 use physics::{CollisionShape, PhysicsHandler, StaticCollisionType};
 use player::PlayerState;
@@ -38,6 +43,7 @@ fn main() {
 }
 
 pub struct Game {
+    _res: Resources,
     player_state: PlayerState,
     physics: PhysicsHandler,
 
@@ -47,32 +53,35 @@ pub struct Game {
     camera_debug: bool,
 }
 
+pub struct Resources {
+    pub texture: Arc<LoadedTexture>,
+    pub cube: Arc<Mesh>,
+}
+
 impl App for Game {
     fn new(state: &mut State) -> Self {
         state
-            .renderer()
+            .renderer_mut()
             .add_renderer::<TextureRenderer>(5)
+            .add_renderer::<ModelRenderer>(5)
             .add_renderer::<Ui3dRenderer>(10);
 
         let cursor_locked = true;
         state.window().confine_cursor(cursor_locked);
         state.window().hide_cursor(cursor_locked);
 
-        let default_texture = state.renderer().clone_default_texture();
+        let res = Resources {
+            texture: state.renderer().clone_default_texture(),
+            cube: Arc::new(Mesh::load_mesh(
+                state.renderer().core().device(),
+                &CUBE_VERTICES,
+                &CUBE_INDICES,
+            )),
+        };
 
-        spawn_floor(state.world_mut(), default_texture.clone());
+        spawn_world(state, &res);
 
-        state.world_mut().spawn((
-            Transform::default(),
-            GlobalTransform::default(),
-            Sprite {
-                texture: default_texture,
-                half_size: glam::vec2(100., 100.),
-                color: [1., 0., 0., 1.],
-            },
-        ));
-
-        let player_state = PlayerState::new(state);
+        let player_state = PlayerState::new(state, &res);
         let camera = spawn_camera(state);
         state
             .world_mut()
@@ -88,6 +97,7 @@ impl App for Game {
         let physics = PhysicsHandler::default();
 
         Self {
+            _res: res,
             player_state,
             physics,
             camera,
@@ -159,16 +169,16 @@ fn spawn_camera(state: &mut State) -> Entity {
     state.world_mut().spawn(builder.build())
 }
 
-fn spawn_floor(world: &mut hecs::World, texture: Arc<LoadedTexture>) {
-    world.spawn((
+fn spawn_world(state: &mut State, resources: &Resources) {
+    state.world_mut().spawn((
         Transform::from_rotation_translation(
             glam::Quat::from_rotation_x(90_f32.to_radians()),
             glam::vec3(0., -40., 0.),
         ),
         GlobalTransform::default(),
         Sprite {
-            texture,
-            half_size: glam::vec2(500., 500.),
+            texture: resources.texture.clone(),
+            size: glam::vec2(500., 500.),
             color: [0.3, 0.3, 0.3, 1.],
         },
         StaticCollisionType,
@@ -176,6 +186,34 @@ fn spawn_floor(world: &mut hecs::World, texture: Arc<LoadedTexture>) {
             half_width: 500.,
             half_height: 5.,
             half_depth: 500.,
+        },
+    ));
+
+    state.world_mut().spawn((
+        // Transform::default(),
+        Transform::from_translation((400., 0., 0.)),
+        GlobalTransform::default(),
+        Sprite {
+            texture: resources.texture.clone(),
+            size: glam::vec2(100., 100.),
+            color: [1., 0., 0., 1.],
+        },
+    ));
+
+    state.world_mut().spawn((
+        // Transform::default(),
+        Transform::from_scale((1., 1., 1.)),
+        GlobalTransform::default(),
+        Model {
+            meshes: vec![(resources.cube.clone(), resources.texture.clone())],
+            color: [1., 1., 1., 1.],
+            scale: glam::vec3(20., 20., 20.),
+        },
+        StaticCollisionType,
+        CollisionShape::Box {
+            half_width: 10.,
+            half_height: 10.,
+            half_depth: 10.,
         },
     ));
 }

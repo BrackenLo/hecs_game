@@ -4,11 +4,15 @@ use hecs::{Entity, EntityBuilder};
 use hecs_engine::{
     common::{GlobalTransform, Transform},
     engine::{spatial::LocalTransform, tools::KeyCode, State},
-    prelude::Sprite,
+    pipelines::model_renderer::Model,
 };
 
-use crate::physics::{
-    Accel, CharacterCollisionBundle, CharacterController, CharacterMovementBundle,
+use crate::{
+    physics::{
+        Accel, CharacterCollisionBundle, CharacterController, CharacterMovementBundle,
+        CollisionShape,
+    },
+    Resources,
 };
 
 //====================================================================
@@ -33,9 +37,7 @@ pub struct PlayerState {
 }
 
 impl PlayerState {
-    pub fn new(state: &mut State) -> Self {
-        let texture = state.renderer().clone_default_texture();
-
+    pub fn new(state: &mut State, resources: &Resources) -> Self {
         let player = state.world_mut().spawn(
             EntityBuilder::new()
                 .add(Player)
@@ -43,15 +45,24 @@ impl PlayerState {
                     walk: 1300.,
                     sprint: 2000.,
                 })
-                .add(Transform::from_translation((10., 0., -50.)))
+                .add(Transform::from_translation((10., 0., -200.)))
                 .add(GlobalTransform::default())
-                .add(Sprite {
-                    texture,
-                    half_size: glam::vec2(20., 35.),
+                // .add(Sprite {
+                //     texture,
+                //     size: glam::vec2(20., 35.),
+                //     color: [0., 1., 0., 1.],
+                // })
+                .add(Model {
+                    meshes: vec![(resources.cube.clone(), resources.texture.clone())],
                     color: [0., 1., 0., 1.],
+                    scale: glam::vec3(20., 40., 20.),
                 })
                 .add_bundle(CharacterMovementBundle::default())
-                .add_bundle(CharacterCollisionBundle::default())
+                .add_bundle(CharacterCollisionBundle::from_shape(CollisionShape::Box {
+                    half_width: 10.,
+                    half_height: 20.,
+                    half_depth: 10.,
+                }))
                 .build(),
         );
 
