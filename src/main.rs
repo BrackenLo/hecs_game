@@ -183,9 +183,9 @@ fn spawn_world(state: &mut State, resources: &Resources) {
         },
         StaticCollisionType,
         CollisionShape::Box {
-            half_width: 500.,
+            half_width: 250.,
             half_height: 5.,
-            half_depth: 500.,
+            half_depth: 250.,
         },
     ));
 
